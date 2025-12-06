@@ -347,6 +347,143 @@ app.post('/api/tickets', async (req, res) => {
   }
 });
 
+// Get Advertised Tickets (For Homepage)
+app.get('/api/tickets/advertised', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const advertisedTickets = await tickets
+      .find({
+        verificationStatus: 'approved',
+        isAdvertised: true,
+      })
+      .limit(6)
+      .toArray();
+
+    console.log('📢 Advertised tickets found:', advertisedTickets.length); // Debug log
+
+    res.json({
+      success: true,
+      data: advertisedTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/advertised GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch advertised tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Latest Tickets (For Homepage)
+app.get('/api/tickets/latest', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const latestTickets = await tickets
+      .find({ verificationStatus: 'approved' })
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .toArray();
+
+    console.log('🆕 Latest tickets found:', latestTickets.length); // Debug log
+
+    res.json({
+      success: true,
+      data: latestTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/latest GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch latest tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Pending Tickets (Admin Only)
+app.get('/api/tickets/pending', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const pendingTickets = await tickets
+      .find({ verificationStatus: 'pending' })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    console.log('📋 Pending tickets found:', pendingTickets.length); // Debug log
+    console.log('First ticket:', pendingTickets[0]); // Show first ticket
+
+    res.json({
+      success: true,
+      count: pendingTickets.length,
+      data: pendingTickets,
+    });
+  } catch (error) {
+    console.error('❌ Error in /api/tickets/pending GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get ALL Tickets (Admin Only - including pending, approved, rejected)
+app.get('/api/tickets/all-admin', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const allTickets = await tickets
+      .find({})  // No filter - get everything
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    console.log('📊 All tickets (admin view):', allTickets.length); // Debug log
+
+    res.json({
+      success: true,
+      count: allTickets.length,
+      data: allTickets,
+    });
+  } catch (error) {
+    console.error('❌ Error in /api/tickets/all-admin GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch all tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Vendor's Tickets
+app.get('/api/tickets/vendor/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { tickets } = getCollections();
+
+    const vendorTickets = await tickets
+      .find({ vendorEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: vendorTickets.length,
+      data: vendorTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/vendor/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendor tickets',
+      error: error.message,
+    });
+  }
+});
+
 // Get All Approved Tickets (Public/Protected)
 // Supports search, filter, sort, pagination
 app.get('/api/tickets', async (req, res) => {
@@ -455,113 +592,6 @@ app.get('/api/tickets/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch ticket',
-      error: error.message,
-    });
-  }
-});
-
-// Get Advertised Tickets (For Homepage)
-app.get('/api/tickets/advertised', async (req, res) => {
-  try {
-    const { tickets } = getCollections();
-
-    const advertisedTickets = await tickets
-      .find({
-        verificationStatus: 'approved',
-        isAdvertised: true,
-      })
-      .limit(6)
-      .toArray();
-
-    console.log('📢 Advertised tickets found:', advertisedTickets.length); // Debug log
-
-    res.json({
-      success: true,
-      data: advertisedTickets,
-    });
-  } catch (error) {
-    console.error('Error in /api/tickets/advertised GET:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch advertised tickets',
-      error: error.message,
-    });
-  }
-});
-
-// Get Latest Tickets (For Homepage)
-app.get('/api/tickets/latest', async (req, res) => {
-  try {
-    const { tickets } = getCollections();
-
-    const latestTickets = await tickets
-      .find({ verificationStatus: 'approved' })
-      .sort({ createdAt: -1 })
-      .limit(8)
-      .toArray();
-
-    console.log('🆕 Latest tickets found:', latestTickets.length); // Debug log
-
-    res.json({
-      success: true,
-      data: latestTickets,
-    });
-  } catch (error) {
-    console.error('Error in /api/tickets/latest GET:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch latest tickets',
-      error: error.message,
-    });
-  }
-});
-
-// Get Vendor's Tickets
-app.get('/api/tickets/vendor/:email', async (req, res) => {
-  try {
-    const { email } = req.params;
-    const { tickets } = getCollections();
-
-    const vendorTickets = await tickets
-      .find({ vendorEmail: email })
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    res.json({
-      success: true,
-      count: vendorTickets.length,
-      data: vendorTickets,
-    });
-  } catch (error) {
-    console.error('Error in /api/tickets/vendor/:email GET:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch vendor tickets',
-      error: error.message,
-    });
-  }
-});
-
-// Get Pending Tickets (Admin Only)
-app.get('/api/tickets/pending', async (req, res) => {
-  try {
-    const { tickets } = getCollections();
-
-    const pendingTickets = await tickets
-      .find({ verificationStatus: 'pending' })
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    res.json({
-      success: true,
-      count: pendingTickets.length,
-      data: pendingTickets,
-    });
-  } catch (error) {
-    console.error('Error in /api/tickets/pending GET:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch pending tickets',
       error: error.message,
     });
   }
