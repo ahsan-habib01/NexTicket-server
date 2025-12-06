@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -210,6 +211,86 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Update User Role (Admin Only)
+app.patch('/api/users/:email/role', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { role } = req.body;
+    const { users } = getCollections();
+
+    // Validate role
+    if (!['user', 'vendor', 'admin'].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role. Must be user, vendor, or admin',
+      });
+    }
+
+    const result = await users.updateOne(
+      { email },
+      { $set: { role, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `User role updated to ${role}`,
+    });
+  } catch (error) {
+    console.error('Error in /api/users/:email/role PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user role',
+      error: error.message,
+    });
+  }
+});
+
+// Mark Vendor as Fraud (Admin Only)
+app.patch('/api/users/:email/fraud', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { users, tickets } = getCollections();
+
+    // Update user
+    const userResult = await users.updateOne(
+      { email, role: 'vendor' },
+      { $set: { isFraud: true, updatedAt: new Date() } }
+    );
+
+    if (userResult.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vendor not found',
+      });
+    }
+
+    // Hide all tickets from this vendor
+    await tickets.updateMany(
+      { vendorEmail: email },
+      { $set: { verificationStatus: 'rejected' } }
+    );
+
+    res.json({
+      success: true,
+      message: 'Vendor marked as fraud and all tickets hidden',
+    });
+  } catch (error) {
+    console.error('Error in /api/users/:email/fraud PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark vendor as fraud',
+      error: error.message,
+    });
+  }
+});
+
 // ============================================
 // TEST ROUTE - Verify MongoDB Collections
 // ============================================
@@ -392,6 +473,8 @@ app.get('/api/tickets/advertised', async (req, res) => {
       .limit(6)
       .toArray();
 
+    console.log('📢 Advertised tickets found:', advertisedTickets.length); // Debug log
+
     res.json({
       success: true,
       data: advertisedTickets,
@@ -416,6 +499,8 @@ app.get('/api/tickets/latest', async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(8)
       .toArray();
+
+    console.log('🆕 Latest tickets found:', latestTickets.length); // Debug log
 
     res.json({
       success: true,
@@ -703,6 +788,8 @@ app.post('/api/bookings', async (req, res) => {
     const bookingData = req.body;
     const { bookings } = getCollections();
 
+    console.log('📝 Creating booking:', bookingData); // Debug log
+
     const newBooking = {
       ...bookingData,
       createdAt: new Date(),
@@ -710,13 +797,15 @@ app.post('/api/bookings', async (req, res) => {
 
     const result = await bookings.insertOne(newBooking);
 
+    console.log('✅ Booking created with ID:', result.insertedId); // Debug log
+
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
       data: result,
     });
   } catch (error) {
-    console.error('Error in /api/bookings POST:', error);
+    console.error('❌ Error in /api/bookings POST:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create booking',
@@ -918,6 +1007,146 @@ app.patch('/api/bookings/:id/pay', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to record payment',
+      error: error.message,
+    });
+  }
+});
+
+
+// ============================================
+// STATS ROUTES
+// ============================================
+
+// Get Vendor Stats
+app.get('/api/stats/vendor/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { bookings, tickets } = getCollections();
+
+    // Get all paid bookings for this vendor
+    const paidBookings = await bookings
+      .find({ vendorEmail: email, status: 'paid' })
+      .toArray();
+
+    // Calculate total revenue
+    const totalRevenue = paidBookings.reduce(
+      (sum, booking) => sum + booking.totalPrice,
+      0
+    );
+
+    // Calculate total tickets sold
+    const totalTicketsSold = paidBookings.reduce(
+      (sum, booking) => sum + booking.bookingQuantity,
+      0
+    );
+
+    // Count total tickets added by vendor
+    const totalTicketsAdded = await tickets.countDocuments({
+      vendorEmail: email,
+    });
+
+    // Count pending bookings
+    const pendingBookings = await bookings.countDocuments({
+      vendorEmail: email,
+      status: 'pending',
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue,
+        totalTicketsSold,
+        totalTicketsAdded,
+        pendingBookings,
+      },
+    });
+  } catch (error) {
+    console.error('Error in /api/stats/vendor/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendor stats',
+      error: error.message,
+    });
+  }
+});
+
+// Create Payment Intent
+app.post('/api/create-payment-intent', async (req, res) => {
+  try {
+    const { amount } = req.body; // amount in BDT (Taka)
+
+    // Create payment intent (Stripe uses smallest currency unit)
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // Convert to paisa
+      currency: 'bdt',
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (error) {
+    console.error('Error creating payment intent:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create payment intent',
+      error: error.message,
+    });
+  }
+});
+
+// Save Transaction
+app.post('/api/transactions', async (req, res) => {
+  try {
+    const transactionData = req.body;
+    const { transactions } = getCollections();
+
+    const newTransaction = {
+      ...transactionData,
+      createdAt: new Date(),
+    };
+
+    const result = await transactions.insertOne(newTransaction);
+
+    res.status(201).json({
+      success: true,
+      message: 'Transaction saved successfully',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/transactions POST:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save transaction',
+      error: error.message,
+    });
+  }
+});
+
+// Get User Transactions
+app.get('/api/transactions/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { transactions } = getCollections();
+
+    const userTransactions = await transactions
+      .find({ userEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: userTransactions.length,
+      data: userTransactions,
+    });
+  } catch (error) {
+    console.error('Error in /api/transactions/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch transactions',
       error: error.message,
     });
   }
