@@ -694,6 +694,236 @@ app.patch('/api/tickets/:id/advertise', async (req, res) => {
 
 
 // ============================================
+// BOOKING ROUTES
+// ============================================
+
+// Create Booking (User Only)
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const bookingData = req.body;
+    const { bookings } = getCollections();
+
+    const newBooking = {
+      ...bookingData,
+      createdAt: new Date(),
+    };
+
+    const result = await bookings.insertOne(newBooking);
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking created successfully',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings POST:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create booking',
+      error: error.message,
+    });
+  }
+});
+
+// Get User's Bookings
+app.get('/api/bookings/user/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { bookings } = getCollections();
+
+    const userBookings = await bookings
+      .find({ userEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: userBookings.length,
+      data: userBookings,
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings/user/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user bookings',
+      error: error.message,
+    });
+  }
+});
+
+// Get Vendor's Booking Requests
+app.get('/api/bookings/vendor/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { bookings } = getCollections();
+
+    const vendorBookings = await bookings
+      .find({ vendorEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: vendorBookings.length,
+      data: vendorBookings,
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings/vendor/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendor bookings',
+      error: error.message,
+    });
+  }
+});
+
+// Accept Booking (Vendor Only)
+app.patch('/api/bookings/:id/accept', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bookings } = getCollections();
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID',
+      });
+    }
+
+    const result = await bookings.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'accepted',
+          acceptedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Booking accepted successfully',
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings/:id/accept PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to accept booking',
+      error: error.message,
+    });
+  }
+});
+
+// Reject Booking (Vendor Only)
+app.patch('/api/bookings/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { bookings } = getCollections();
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID',
+      });
+    }
+
+    const result = await bookings.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'rejected',
+          rejectedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Booking rejected successfully',
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings/:id/reject PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject booking',
+      error: error.message,
+    });
+  }
+});
+
+// Update Booking to Paid (after Stripe payment)
+app.patch('/api/bookings/:id/pay', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { transactionId } = req.body;
+    const { bookings, tickets } = getCollections();
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid booking ID',
+      });
+    }
+
+    // Get booking details
+    const booking = await bookings.findOne({ _id: new ObjectId(id) });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Update booking status to paid
+    await bookings.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'paid',
+          transactionId,
+          paidAt: new Date(),
+        },
+      }
+    );
+
+    // Reduce ticket quantity
+    await tickets.updateOne(
+      { _id: new ObjectId(booking.ticketId) },
+      {
+        $inc: { quantity: -booking.bookingQuantity },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: 'Payment recorded successfully',
+    });
+  } catch (error) {
+    console.error('Error in /api/bookings/:id/pay PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to record payment',
+      error: error.message,
+    });
+  }
+});
+
+// ============================================
 // MORE ROUTES WILL BE ADDED HERE
 // ============================================
 // We'll add ticket routes, booking routes, etc. step by step
