@@ -230,6 +230,469 @@ app.get('/api/test/collections', async (req, res) => {
   }
 });
 
+
+// ============================================
+// TICKET ROUTES
+// ============================================
+
+// Add New Ticket (Vendor Only)
+app.post('/api/tickets', async (req, res) => {
+  try {
+    const ticketData = req.body;
+    const { tickets } = getCollections();
+
+    // Create ticket with initial pending status
+    const newTicket = {
+      ...ticketData,
+      verificationStatus: 'pending', // Admin will approve/reject
+      isAdvertised: false, // Not advertised initially
+      createdAt: new Date(),
+    };
+
+    const result = await tickets.insertOne(newTicket);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Ticket added successfully. Waiting for admin approval.',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets POST:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add ticket',
+      error: error.message,
+    });
+  }
+});
+
+// Get All Approved Tickets (Public/Protected)
+// Supports search, filter, sort, pagination
+app.get('/api/tickets', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+    
+    // Query parameters for search, filter, sort, pagination
+    const {
+      fromLocation,
+      toLocation,
+      transportType,
+      sortBy, // 'price-low', 'price-high'
+      page = 1,
+      limit = 9,
+    } = req.query;
+
+    // Build query - only approved tickets
+    let query = { verificationStatus: 'approved' };
+
+    // Search by location
+    if (fromLocation) {
+      query.fromLocation = { $regex: fromLocation, $options: 'i' };
+    }
+    if (toLocation) {
+      query.toLocation = { $regex: toLocation, $options: 'i' };
+    }
+
+    // Filter by transport type
+    if (transportType) {
+      query.transportType = transportType;
+    }
+
+    // Sort options
+    let sort = { createdAt: -1 }; // Default: newest first
+    if (sortBy === 'price-low') {
+      sort = { pricePerUnit: 1 }; // Low to high
+    } else if (sortBy === 'price-high') {
+      sort = { pricePerUnit: -1 }; // High to low
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Execute query
+    const allTickets = await tickets
+      .find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
+
+    // Get total count for pagination
+    const totalCount = await tickets.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: allTickets,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(totalCount / limitNum),
+        totalTickets: totalCount,
+        ticketsPerPage: limitNum,
+      },
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Single Ticket by ID
+app.get('/api/tickets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tickets } = getCollections();
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ticket ID',
+      });
+    }
+
+    const ticket = await tickets.findOne({ _id: new ObjectId(id) });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: ticket,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/:id GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch ticket',
+      error: error.message,
+    });
+  }
+});
+
+// Get Advertised Tickets (For Homepage)
+app.get('/api/tickets/advertised', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const advertisedTickets = await tickets
+      .find({
+        verificationStatus: 'approved',
+        isAdvertised: true,
+      })
+      .limit(6)
+      .toArray();
+
+    res.json({
+      success: true,
+      data: advertisedTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/advertised GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch advertised tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Latest Tickets (For Homepage)
+app.get('/api/tickets/latest', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const latestTickets = await tickets
+      .find({ verificationStatus: 'approved' })
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .toArray();
+
+    res.json({
+      success: true,
+      data: latestTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/latest GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch latest tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Vendor's Tickets
+app.get('/api/tickets/vendor/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { tickets } = getCollections();
+
+    const vendorTickets = await tickets
+      .find({ vendorEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: vendorTickets.length,
+      data: vendorTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/vendor/:email GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendor tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Get Pending Tickets (Admin Only)
+app.get('/api/tickets/pending', async (req, res) => {
+  try {
+    const { tickets } = getCollections();
+
+    const pendingTickets = await tickets
+      .find({ verificationStatus: 'pending' })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      count: pendingTickets.length,
+      data: pendingTickets,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/pending GET:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending tickets',
+      error: error.message,
+    });
+  }
+});
+
+// Update Ticket (Vendor Only)
+app.patch('/api/tickets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const { tickets } = getCollections();
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ticket ID',
+      });
+    }
+
+    // Remove fields that shouldn't be updated directly
+    delete updateData._id;
+    delete updateData.verificationStatus;
+    delete updateData.isAdvertised;
+    delete updateData.vendorEmail;
+
+    const result = await tickets.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          ...updateData,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Ticket updated successfully',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/:id PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update ticket',
+      error: error.message,
+    });
+  }
+});
+
+// Delete Ticket (Vendor Only)
+app.delete('/api/tickets/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tickets } = getCollections();
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ticket ID',
+      });
+    }
+
+    const result = await tickets.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Ticket deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/:id DELETE:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete ticket',
+      error: error.message,
+    });
+  }
+});
+
+// Verify Ticket (Admin Only) - Approve or Reject
+app.patch('/api/tickets/:id/verify', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { verificationStatus } = req.body; // 'approved' or 'rejected'
+    const { tickets } = getCollections();
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ticket ID',
+      });
+    }
+
+    // Validate status
+    if (!['approved', 'rejected'].includes(verificationStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification status. Must be "approved" or "rejected"',
+      });
+    }
+
+    const result = await tickets.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          verificationStatus,
+          verifiedAt: new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Ticket ${verificationStatus} successfully`,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/:id/verify PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify ticket',
+      error: error.message,
+    });
+  }
+});
+
+// Toggle Advertise (Admin Only)
+app.patch('/api/tickets/:id/advertise', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isAdvertised } = req.body;
+    const { tickets } = getCollections();
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ticket ID',
+      });
+    }
+
+    // If trying to advertise, check if already have 6 advertised
+    if (isAdvertised) {
+      const advertisedCount = await tickets.countDocuments({ 
+        isAdvertised: true,
+        verificationStatus: 'approved'
+      });
+
+      if (advertisedCount >= 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot advertise more than 6 tickets. Please unadvertise one first.',
+        });
+      }
+    }
+
+    const result = await tickets.updateOne(
+      { 
+        _id: new ObjectId(id),
+        verificationStatus: 'approved' // Only approved tickets can be advertised
+      },
+      { 
+        $set: { 
+          isAdvertised,
+          advertisedAt: isAdvertised ? new Date() : null
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket not found or not approved',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Ticket ${isAdvertised ? 'advertised' : 'unadvertised'} successfully`,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error in /api/tickets/:id/advertise PATCH:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update advertisement status',
+      error: error.message,
+    });
+  }
+});
+
+
 // ============================================
 // MORE ROUTES WILL BE ADDED HERE
 // ============================================
