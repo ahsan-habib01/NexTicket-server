@@ -1017,10 +1017,7 @@ app.patch('/api/bookings/:id/pay', async (req, res) => {
 });
 
 
-// ============================================
 // STATS ROUTES
-// ============================================
-
 // Get Vendor Stats
 app.get('/api/stats/vendor/:email', async (req, res) => {
   try {
@@ -1077,9 +1074,9 @@ app.get('/api/stats/vendor/:email', async (req, res) => {
 // Create Payment Intent
 app.post('/api/create-payment-intent', async (req, res) => {
   try {
-    const { amount } = req.body; // amount in BDT (Taka)
+    const { amount } = req.body; // amount in BDT
 
-    // Create payment intent (Stripe uses smallest currency unit)
+    // Create payment intent 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to paisa
       currency: 'bdt',
