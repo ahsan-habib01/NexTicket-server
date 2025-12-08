@@ -44,26 +44,20 @@ async function connectDB() {
   try {
     await client.connect();
     console.log('✅ Successfully connected to MongoDB!');
-    return client.db('nexticket-db'); // Your database name
+    return client.db('nexticket-db');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
-    process.exit(1); // Exit if database connection fails
+    process.exit(1);
   }
 }
 
-// ============================================
 // GLOBAL DATABASE VARIABLE
-// ============================================
 let db;
-
-// Connect to database when server starts
 connectDB().then(database => {
   db = database;
 });
 
-// ============================================
 // MIDDLEWARE: Verify MongoDB Connection
-// ============================================
 function checkDBConnection(req, res, next) {
   if (!db) {
     return res.status(503).json({
@@ -74,12 +68,9 @@ function checkDBConnection(req, res, next) {
   next();
 }
 
-// Apply to all routes except root
 app.use('/api', checkDBConnection);
 
-// ============================================
 // COLLECTIONS - We'll use these throughout
-// ============================================
 const getCollections = () => ({
   users: db.collection('users'),
   tickets: db.collection('tickets'),
