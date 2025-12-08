@@ -78,11 +78,8 @@ const getCollections = () => ({
   transactions: db.collection('transactions'),
 });
 
-// ============================================
 // API ROUTES
-// ============================================
-
-// Root route - Health check
+// Root route 
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -91,10 +88,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// ============================================
 // USER ROUTES
-// ============================================
-
 // Create or Update User (after Firebase authentication)
 app.post('/api/users', async (req, res) => {
   try {
@@ -279,9 +273,7 @@ app.patch('/api/users/:email/fraud', async (req, res) => {
   }
 });
 
-// ============================================
 // TEST ROUTE - Verify MongoDB Collections
-// ============================================
 app.get('/api/test/collections', async (req, res) => {
   try {
     const collections = await db.listCollections().toArray();
