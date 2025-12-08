@@ -1153,14 +1153,7 @@ app.get('/api/transactions/:email', async (req, res) => {
   }
 });
 
-// ============================================
-// MORE ROUTES WILL BE ADDED HERE
-// ============================================
-// We'll add ticket routes, booking routes, etc. step by step
-
-// ============================================
-// 404 HANDLER - Must be after all routes
-// ============================================
+// 404 HANDLER 
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -1168,9 +1161,7 @@ app.use((req, res) => {
   });
 });
 
-// ============================================
 // ERROR HANDLING MIDDLEWARE
-// ============================================
 app.use((err, req, res, next) => {
   console.error('Unhandled Error:', err);
   res.status(500).json({
@@ -1180,18 +1171,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ============================================
 // START SERVER
-// ============================================
 app.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
-  console.log(`📍 Local: http://localhost:${port}`);
-  console.log(`📍 Network: http://192.168.x.x:${port}`);
 });
 
-// ============================================
 // GRACEFUL SHUTDOWN
-// ============================================
 process.on('SIGINT', async () => {
   console.log('\n⏳ Shutting down gracefully...');
   try {
