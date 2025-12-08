@@ -7,9 +7,8 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 5000;
 
-// ============================================
-// MIDDLEWARE CONFIGURATION
-// ============================================
+// Middleware Configuration
+
 
 // CORS Configuration - CRITICAL for deployment
 const corsOptions = {
@@ -27,9 +26,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json()); // Parse JSON request bodies
 
-// ============================================
 // MONGODB CONNECTION
-// ============================================
 
 const uri = process.env.MONGODB_URI;
 
