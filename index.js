@@ -292,10 +292,7 @@ app.get('/api/test/collections', async (req, res) => {
 });
 
 
-// ============================================
 // TICKET ROUTES
-// ============================================
-
 // Add New Ticket (Vendor Only)
 app.post('/api/tickets', async (req, res) => {
   try {
