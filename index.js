@@ -785,10 +785,7 @@ app.patch('/api/tickets/:id/advertise', async (req, res) => {
 });
 
 
-// ============================================
 // BOOKING ROUTES
-// ============================================
-
 // Create Booking (User Only)
 app.post('/api/bookings', async (req, res) => {
   try {
