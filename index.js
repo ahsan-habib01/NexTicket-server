@@ -15,9 +15,7 @@ const corsOptions = {
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
-    // Add your deployed frontend URLs here when deploying
-    // 'https://your-netlify-site.netlify.app',
-    // 'https://your-vercel-site.vercel.app'
+    'https://nexticket-71fe1.web.app/',
   ],
   credentials: true,
   optionsSuccessStatus: 200,
