@@ -15,7 +15,6 @@ const corsOptions = {
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
-    'https://nexticket-71fe1.web.app',
     'https://nex-ticket.netlify.app',
   ],
   credentials: true,
@@ -38,33 +37,65 @@ const client = new MongoClient(uri, {
   },
 });
 
+// GLOBAL DATABASE VARIABLE
+let db = null;
+let isConnecting = false;
+
 // Function to connect to MongoDB
 async function connectDB() {
+  // If already connected, return existing db
+  if (db) {
+    return db;
+  }
+
+  // If connection is in progress, wait for it
+  if (isConnecting) {
+    return new Promise((resolve) => {
+      const checkConnection = setInterval(() => {
+        if (db) {
+          clearInterval(checkConnection);
+          resolve(db);
+        }
+      }, 100);
+    });
+  }
+
+  isConnecting = true;
+
   try {
     await client.connect();
+    db = client.db('nexticket-db');
     console.log('✅ Successfully connected to MongoDB!');
-    return client.db('nexticket-db');
+    isConnecting = false;
+    return db;
   } catch (error) {
+    isConnecting = false;
     console.error('❌ MongoDB connection error:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
-// GLOBAL DATABASE VARIABLE
-let db;
-connectDB().then(database => {
-  db = database;
+// Initialize connection on startup
+connectDB().catch(err => {
+  console.error('Failed to connect to MongoDB on startup:', err);
 });
 
 // MIDDLEWARE: Verify MongoDB Connection
-function checkDBConnection(req, res, next) {
-  if (!db) {
+async function checkDBConnection(req, res, next) {
+  try {
+    if (!db) {
+      console.log('⏳ DB not connected, attempting connection...');
+      db = await connectDB();
+    }
+    next();
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
     return res.status(503).json({
       success: false,
       message: 'Database connection not established',
+      error: error.message,
     });
   }
-  next();
 }
 
 app.use('/api', checkDBConnection);
