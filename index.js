@@ -15,7 +15,8 @@ const corsOptions = {
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
-    'https://nexticket-71fe1.web.app/',
+    'https://nexticket-71fe1.web.app',
+    'https://nex-ticket.netlify.app',
   ],
   credentials: true,
   optionsSuccessStatus: 200,
