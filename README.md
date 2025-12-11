@@ -1,9 +1,9 @@
 # NexTicket - Server
 
-Backend API for TicketBari, an online ticket booking platform for Bus, Train, Launch, and Flight tickets.
+Backend API for NexTicket, an online ticket booking platform for Bus, Train, Launch, and Flight tickets.
 
 ## 🔗 Live API
-[[Your Server URL Here](https://nex-ticket-server.vercel.app)]
+[[Server URL](https://nex-ticket-server.vercel.app)]
 
 ## 🛠️ Tech Stack
 
